@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Farming System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+  <style>
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 60px;
+      height: 34px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 34px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 26px;
+      width: 26px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #2196F3;
+    }
+    input:checked + .slider:before {
+      transform: translateX(26px);
+    }
+    .status-active {
+      background-color: #10B981;
+      color: white;
+    }
+    .status-inactive {
+      background-color: #EF4444;
+      color: white;
+    }
+    .logic-true {
+      background-color: #D1FAE5;
+      color: #065F46;
+    }
+    .logic-false {
+      background-color: #FEE2E2;
+      color: #991B1B;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="container mx-auto py-8 px-4 max-w-8xl">
+    <h1 class="text-3xl font-bold text-center mb-8 text-gray-800">Smart Farming System</h1>
+
+    <!-- Login Form -->
+    <div id="loginForm" class="max-w-md mx-auto bg-white p-6 rounded-lg shadow-md">
+      <input type="email" id="email" placeholder="Enter Email" class="w-full mb-4 p-2 border rounded">
+      <input type="password" id="password" placeholder="Enter Password" class="w-full mb-4 p-2 border rounded">
+      <button id="loginBtn" class="w-full bg-blue-600 text-white py-2 rounded">Login</button>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" style="display:none">
+      <!-- Sensor Cards -->
+      <div class="mb-8">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Sensor Monitoring</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="sensorContainer"></div>
+      </div>
+
+      <!-- Potentiometer Set Points -->
+      <div class="mb-8">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Set Points (Potentiometer 10kΩ)</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="potentiometerContainer"></div>
+      </div>
+
+      <!-- Sensor Groups with Control Logic -->
+      <div class="mb-8">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Sensor Groups & Control Logic</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="sensorGroupContainer"></div>
+      </div>
+
+      <!-- Relay Control Logic Status -->
+      <div class="mb-8">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Relay Control Logic</h2>
+        <div class="bg-white p-6 rounded-lg shadow-md">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="relayLogicContainer"></div>
+        </div>
+      </div>
+
+      <!-- Actuator Controls -->
+      <div class="mb-8">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Manual Override Controls</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="actuatorContainer"></div>
+      </div>
+
+      <div class="mt-8 text-center">
+        <button id="allOnBtn" class="bg-green-500 text-white px-6 py-2 rounded-lg">All ON</button>
+        <button id="allOffBtn" class="bg-red-500 text-white px-6 py-2 rounded-lg">All OFF</button>
+        <button id="logoutBtn" class="bg-gray-600 text-white px-6 py-2 rounded-lg ml-4">Logout</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyARnsUK3fcLTOAzjtykzH1Pr4670N_iU4M",
+      authDomain: "smart-farming-system2.firebaseapp.com",
+      databaseURL: "https://smart-farming-system2-default-rtdb.firebaseio.com",
+      projectId: "smart-farming-system2",
+      storageBucket: "smart-farming-system2.firebasestorage.app",
+      messagingSenderId: "17039270358",
+      appId: "1:17039270358:web:9181931f9a46cc03590477"
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    const allowedEmail = "admin321@gmail.com";
+    const allowedPassword = "123456789";
+
+    const loginForm = document.getElementById("loginForm");
+    const dashboard = document.getElementById("dashboard");
+    const loginBtn = document.getElementById("loginBtn");
+
+    // Global variables for sensor data and control logic
+    let sensorData = {};
+    let potentiometerData = {};
+    let relayStates = {};
+
+    loginBtn.addEventListener("click", () => {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+
+      if(email === allowedEmail && password === allowedPassword){
+        firebase.auth().signInWithEmailAndPassword(email, password)
+          .then(() => {
+            loginForm.style.display = 'none';
+            dashboard.style.display = 'block';
+            initDashboard();
+          })
+          .catch(err => alert(err.message));
+      } else {
+        alert("Invalid email or password");
+      }
+    });
+
+    function initDashboard() {
+      const db = firebase.database();
+
+      // Initialize sensor monitoring
+      initSensorMonitoring(db);
+      
+      // Initialize potentiometer monitoring
+      initPotentiometerMonitoring(db);
+      
+      // Initialize sensor groups
+      initSensorGroups(db);
+      
+      // Initialize relay logic monitoring
+      initRelayLogic(db);
+
+      // Initialize actuator controls
+      initActuatorControls(db);
+
+      // Start control logic evaluation
+      setInterval(() => {
+        evaluateControlLogic(db);
+      }, 2000);
+    }
+
+    function initSensorMonitoring(db) {
+      const sensors = ['s1','s2','s3','s4','s5','s6'];
+      const sensorContainer = document.getElementById("sensorContainer");
+
+      sensors.forEach(id => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "p-4 bg-white rounded shadow text-center";
+        wrapper.innerHTML = `
+          <h3 class="font-bold mb-2">Sensor ${id.toUpperCase()}</h3>
+          <div class="text-2xl font-semibold" id="${id}-value">0.0%</div>
+          <div class="w-full h-2 bg-gray-200 rounded mt-2">
+            <div id="${id}-bar" class="h-full rounded w-0"></div>
+          </div>
+          <div class="text-sm text-gray-600 mt-1" id="${id}-status">Monitoring...</div>
+        `;
+        sensorContainer.appendChild(wrapper);
+
+        db.ref(`/sensors/${id}`).on("value", snap => {
+          const val = parseFloat(snap.val() || 0);
+          sensorData[id] = val;
+          document.getElementById(`${id}-value`).innerText = val.toFixed(1) + '%';
+          const bar = document.getElementById(`${id}-bar`);
+          bar.style.width = val + '%';
+
+          // Set gradient color based on value
+          const red = Math.min(255, Math.floor((1 - val / 100) * 255));
+          const green = Math.min(255, Math.floor((val / 100) * 255));
+          bar.style.backgroundColor = `rgb(${red}, ${green}, 0)`;
+          
+          // Update status
+          document.getElementById(`${id}-status`).innerText = val > 50 ? 'Moist' : 'Dry';
+        });
+      });
+    }
+
+    function initPotentiometerMonitoring(db) {
+      const potentiometers = ['pot1', 'pot2', 'pot3'];
+      const potContainer = document.getElementById("potentiometerContainer");
+
+      potentiometers.forEach((id, index) => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "p-4 bg-white rounded shadow text-center";
+        wrapper.innerHTML = `
+          <h3 class="font-bold mb-2">Potentiometer ${index + 1}</h3>
+          <div class="text-lg font-semibold" id="${id}-value">0.0%</div>
+          <div class="text-sm text-gray-600" id="${id}-adc">ADC: 0</div>
+          <div class="w-full h-2 bg-gray-200 rounded mt-2">
+            <div id="${id}-bar" class="h-full rounded bg-blue-500 w-0"></div>
+          </div>
+          <div class="text-xs text-gray-500 mt-1">Set Point for Group ${index + 1}</div>
+        `;
+        potContainer.appendChild(wrapper);
+
+        db.ref(`/potentiometers/${id}`).on("value", snap => {
+          const adcValue = parseInt(snap.val() || 0);
+          const percentage = (adcValue / 4095) * 100; // 12-bit ADC
+          potentiometerData[id] = percentage;
+          
+          document.getElementById(`${id}-value`).innerText = percentage.toFixed(1) + '%';
+          document.getElementById(`${id}-adc`).innerText = `ADC: ${adcValue}`;
+          document.getElementById(`${id}-bar`).style.width = percentage + '%';
+        });
+      });
+    }
+
+    function initSensorGroups(db) {
+      const groups = [
+        { id: 'group1', name: 'Group 1', sensors: ['s1', 's2'], pot: 'pot1' },
+        { id: 'group2', name: 'Group 2', sensors: ['s3', 's4'], pot: 'pot2' },
+        { id: 'group3', name: 'Group 3', sensors: ['s5', 's6'], pot: 'pot3' }
+      ];
+      
+      const groupContainer = document.getElementById("sensorGroupContainer");
+
+      groups.forEach(group => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "p-4 bg-white rounded shadow";
+        wrapper.innerHTML = `
+          <h3 class="font-bold mb-3 text-center">${group.name}</h3>
+          <div class="space-y-2">
+            <div class="flex justify-between">
+              <span class="text-sm">Sensors:</span>
+              <span class="text-sm font-semibold" id="${group.id}-sensors">${group.sensors.join(', ').toUpperCase()}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-sm">Avg Moisture:</span>
+              <span class="text-sm font-semibold" id="${group.id}-avg">0.0%</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-sm">Set Point:</span>
+              <span class="text-sm font-semibold" id="${group.id}-setpoint">0.0%</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-sm">Condition:</span>
+              <span class="text-sm font-semibold px-2 py-1 rounded" id="${group.id}-condition">FALSE</span>
+            </div>
+          </div>
+        `;
+        groupContainer.appendChild(wrapper);
+      });
+    }
+
+    function initRelayLogic(db) {
+      const relays = [
+        { id: 'relay1', name: 'Relay 1', description: 'Zone 1 Valve' },
+        { id: 'relay2', name: 'Relay 2', description: 'Zone 2 Valve' },
+        { id: 'relay3', name: 'Relay 3', description: 'Zone 3 Valve' },
+        { id: 'relay4', name: 'Relay 4', description: 'Main Pump' }
+      ];
+      
+      const relayContainer = document.getElementById("relayLogicContainer");
+
+      relays.forEach(relay => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "p-4 bg-gray-50 rounded border text-center";
+        wrapper.innerHTML = `
+          <h4 class="font-bold mb-2">${relay.name}</h4>
+          <div class="text-sm text-gray-600 mb-2">${relay.description}</div>
+          <div class="text-lg font-semibold px-3 py-1 rounded" id="${relay.id}-status">OFF</div>
+          <div class="text-xs mt-2 text-gray-500" id="${relay.id}-reason">Manual Control</div>
+        `;
+        relayContainer.appendChild(wrapper);
+      });
+    }
+
+    function initActuatorControls(db) {
+      const actuators = [
+        { id: "v1", name: "Valve 1", relay: "relay1" },
+        { id: "v2", name: "Valve 2", relay: "relay2" },
+        { id: "v3", name: "Valve 3", relay: "relay3" },
+        { id: "m", name: "Main Pump", relay: "relay4" }
+      ];
+      const actuatorContainer = document.getElementById("actuatorContainer");
+
+      actuators.forEach(actuator => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "p-4 bg-white rounded shadow text-center";
+        wrapper.innerHTML = `
+          <h3 class="font-bold mb-2">${actuator.name}</h3>
+          <p>Status: <span id="${actuator.id}-status">Loading...</span></p>
+          <label class="switch">
+            <input type="checkbox" id="${actuator.id}-control">
+            <span class="slider"></span>
+          </label>
+          <div class="text-xs text-gray-500 mt-2">Manual Override</div>
+        `;
+        actuatorContainer.appendChild(wrapper);
+
+        const ref = db.ref(`/actuators/${actuator.id}`);
+        ref.on("value", snap => {
+          const state = snap.val();
+          relayStates[actuator.relay] = state;
+          document.getElementById(`${actuator.id}-status`).innerText = state ? "ON" : "OFF";
+          document.getElementById(`${actuator.id}-control`).checked = state;
+        });
+
+        document.getElementById(`${actuator.id}-control`).onchange = function() {
+          ref.set(this.checked);
+        };
+      });
+
+      // All OFF button
+      document.getElementById("allOffBtn").onclick = () => {
+        actuators.forEach(actuator => db.ref(`/actuators/${actuator.id}`).set(false));
+      };
+
+      // All ON button
+      document.getElementById("allOnBtn").onclick = () => {
+        actuators.forEach(actuator => db.ref(`/actuators/${actuator.id}`).set(true));
+      };
+    }
+
+    function evaluateControlLogic(db) {
+      // Update sensor groups
+      const groups = [
+        { id: 'group1', sensors: ['s1', 's2'], pot: 'pot1', relay: 'relay1' },
+        { id: 'group2', sensors: ['s3', 's4'], pot: 'pot2', relay: 'relay2' },
+        { id: 'group3', sensors: ['s5', 's6'], pot: 'pot3', relay: 'relay3' }
+      ];
+
+      let anyGroupNeedsWater = false;
+
+      groups.forEach(group => {
+        // Calculate average moisture
+        const sensorValues = group.sensors.map(s => sensorData[s] || 0);
+        const avgMoisture = sensorValues.reduce((a, b) => a + b, 0) / sensorValues.length;
+        const setPoint = potentiometerData[group.pot] || 0;
+        const needsWater = setPoint > avgMoisture;
+
+        if (needsWater) anyGroupNeedsWater = true;
+
+        // Update UI
+        document.getElementById(`${group.id}-avg`).innerText = avgMoisture.toFixed(1) + '%';
+        document.getElementById(`${group.id}-setpoint`).innerText = setPoint.toFixed(1) + '%';
+        
+        const conditionElement = document.getElementById(`${group.id}-condition`);
+        conditionElement.innerText = needsWater ? 'TRUE' : 'FALSE';
+        conditionElement.className = needsWater ? 'text-sm font-semibold px-2 py-1 rounded logic-true' : 'text-sm font-semibold px-2 py-1 rounded logic-false';
+
+        // Update relay status
+        const relayStatus = document.getElementById(`${group.relay}-status`);
+        const relayReason = document.getElementById(`${group.relay}-reason`);
+        const isManualOn = relayStates[group.relay];
+        
+        if (isManualOn) {
+          relayStatus.innerText = 'ON';
+          relayStatus.className = 'text-lg font-semibold px-3 py-1 rounded status-active';
+          relayReason.innerText = 'Manual Override';
+        } else if (needsWater) {
+          relayStatus.innerText = 'AUTO ON';
+          relayStatus.className = 'text-lg font-semibold px-3 py-1 rounded status-active';
+          relayReason.innerText = `Set Point (${setPoint.toFixed(1)}%) > Avg Moisture (${avgMoisture.toFixed(1)}%)`;
+        } else {
+          relayStatus.innerText = 'OFF';
+          relayStatus.className = 'text-lg font-semibold px-3 py-1 rounded status-inactive';
+          relayReason.innerText = `Set Point (${setPoint.toFixed(1)}%) ≤ Avg Moisture (${avgMoisture.toFixed(1)}%)`;
+        }
+      });
+
+      // Update main pump (relay4) logic
+      const mainPumpStatus = document.getElementById('relay4-status');
+      const mainPumpReason = document.getElementById('relay4-reason');
+      const isMainPumpManualOn = relayStates['relay4'];
+      
+      if (isMainPumpManualOn) {
+        mainPumpStatus.innerText = 'ON';
+        mainPumpStatus.className = 'text-lg font-semibold px-3 py-1 rounded status-active';
+        mainPumpReason.innerText = 'Manual Override';
+      } else if (anyGroupNeedsWater) {
+        mainPumpStatus.innerText = 'AUTO ON';
+        mainPumpStatus.className = 'text-lg font-semibold px-3 py-1 rounded status-active';
+        mainPumpReason.innerText = 'Any zone needs irrigation';
+      } else {
+        mainPumpStatus.innerText = 'OFF';
+        mainPumpStatus.className = 'text-lg font-semibold px-3 py-1 rounded status-inactive';
+        mainPumpReason.innerText = 'No irrigation needed';
+      }
+    }
+
+    document.getElementById("logoutBtn").onclick = () => {
+      firebase.auth().signOut().then(() => {
+        dashboard.style.display = "none";
+        loginForm.style.display = "block";
+      });
+    };
+  </script>
+</body>
+</html>
