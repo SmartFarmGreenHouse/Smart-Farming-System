@@ -173,6 +173,19 @@
       border-color: rgba(79, 70, 229, 0.5);
       box-shadow: 0 3px 10px rgba(79, 70, 229, 0.3);
     }
+    
+    /* NEW: Mode Button Style */
+    .mode-toggle-btn {
+      padding: 0.5px 4px;
+      font-size: 0.55rem; /* text-micro */
+      border-radius: 0.25rem; /* rounded */
+      background-color: #e5e7eb; /* bg-gray-200 */
+      transition: background-color 0.2s;
+      border: 1px solid #d1d5db; /* border-gray-300 */
+    }
+    .mode-toggle-btn:hover {
+       background-color: #d1d5db; /* hover:bg-gray-300 */
+    }
 
     /* Ultra compact text sizes */
     .text-micro { font-size: 0.55rem; }
@@ -224,18 +237,23 @@
         </div>
       </div>
 
-      <!-- Pump Control Card - Ultra Compact -->
       <div class="mt-2 flex justify-center">
         <div class="w-full max-w-xs">
           <div id="pumpControlCard" class="card pump-control-card text-center">
             <h4 class="font-semibold mb-0.5 text-center text-gray-700 text-sm-compact">Pump Control</h4>
             <p class="text-tiny text-gray-500 mb-1">Main Pump</p>
-            <div class="mt-auto">
-              <p class="mb-1 text-tiny">Status: <span id="m-status" class="font-bold">Loading...</span></p>
-              <label class="switch mx-auto">
-                <input type="checkbox" id="m-control">
-                <span class="slider"></span>
-              </label>
+            <div class="flex items-center justify-center gap-4">
+                <div>
+                    <p class="mb-1 text-tiny">Status: <span id="m-status" class="font-bold">Loading...</span></p>
+                    <label class="switch mx-auto">
+                        <input type="checkbox" id="m-control">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div>
+                    <p class="mb-1 text-tiny">Mode: <b id="m-mode-status" class="font-bold text-gray-800">Auto</b></p>
+                    <button id="m-mode-toggle" class="mode-toggle-btn">Set Manual</button>
+                </div>
             </div>
           </div>
         </div>
@@ -275,6 +293,8 @@
     let sensorData = {};
     let relayStates = {};
     let setPointValues = { group1: 30, group2: 30, group3: 30 };
+    // NEW: State object to track auto/manual mode for each component
+    let operatingModes = { group1: 'auto', group2: 'auto', group3: 'auto', m: 'auto' };
 
     loginBtn.addEventListener("click", () => {
       const email = document.getElementById("email").value.trim();
@@ -317,32 +337,43 @@
         evaluateControlLogic();
       }, 2000);
     }
+    
+    // NEW: Helper function to update the UI for mode changes
+    function updateModeUI(componentId) {
+        const modeStatusEl = document.getElementById(`${componentId}-mode-status`);
+        const modeToggleBtn = document.getElementById(`${componentId}-mode-toggle`);
+        const groupId = componentId.startsWith('v') ? 'group' + componentId.slice(1) : componentId;
+
+        if (modeStatusEl && modeToggleBtn) {
+            const isAuto = operatingModes[groupId] === 'auto';
+            modeStatusEl.textContent = isAuto ? 'Auto' : 'Manual';
+            modeStatusEl.className = isAuto ? 'font-bold text-blue-600' : 'font-bold text-yellow-600';
+            modeToggleBtn.textContent = isAuto ? 'Set Manual' : 'Set Auto';
+        }
+    }
 
     function buildDashboardColumns(db) {
         const groups = [
-            { id: 'group1', name: 'Group 1', sensors: ['s1', 's2'], actuator: { id: "v1", name: "", relay: "relay1" } },
-            { id: 'group2', name: 'Group 2', sensors: ['s3', 's4'], actuator: { id: "v2", name: "", relay: "relay2" } },
-            { id: 'group3', name: 'Group 3', sensors: ['s5', 's6'], actuator: { id: "v3", name: "", relay: "relay3" } }
+            { id: 'group1', name: 'Group 1', sensors: ['s1', 's2'], actuator: { id: "v1", name: "Solenoid Valve 1", relay: "relay1" } },
+            { id: 'group2', name: 'Group 2', sensors: ['s3', 's4'], actuator: { id: "v2", name: "Solenoid Valve 2", relay: "relay2" } },
+            { id: 'group3', name: 'Group 3', sensors: ['s5', 's6'], actuator: { id: "v3", name: "Solenoid Valve 3", relay: "relay3" } }
         ];
 
-        // Clear columns before building
         document.getElementById('col-group1').innerHTML = '';
         document.getElementById('col-group2').innerHTML = '';
         document.getElementById('col-group3').innerHTML = '';
 
-        // Build columns for each group
         groups.forEach(group => {
             const groupNumber = group.id.slice(-1);
             const column = document.getElementById(`col-${group.id}`);
             
-            // Add cards in order
             column.appendChild(createSensorCard(group, db));
             column.appendChild(createSetPointCard(group));
-            column.appendChild(createRelayLogicCard(group.actuator.relay, `Valve Grup ${groupNumber}`, ''));
-            column.appendChild(createManualOverrideCard(group.actuator, db, `Valve Control Grup ${groupNumber}`));
+            column.appendChild(createRelayLogicCard(group.actuator.relay, `Valve Logic Grup ${groupNumber}`));
+            column.appendChild(createManualOverrideCard(group, db, `Valve Control Grup ${groupNumber}`));
         });
         
-        setupGlobalControls(db, groups.map(g => g.actuator));
+        setupGlobalControls(db, groups);
         updateSetPointDisplay();
     }
 
@@ -350,6 +381,7 @@
         const mainPump = { id: 'm', name: 'Main Pump', relay: 'relay4' };
         const control = document.getElementById('m-control');
         const statusEl = document.getElementById('m-status');
+        const modeToggleBtn = document.getElementById('m-mode-toggle');
         const ref = db.ref(`/actuators/${mainPump.id}`);
 
         ref.on("value", snap => {
@@ -363,13 +395,19 @@
             evaluateControlLogic();
         });
         
+        // When user toggles the switch, switch to MANUAL mode
         control.onchange = function() { 
-            control.dataset.manualOverride = 'true';
-            setTimeout(() => {
-                delete control.dataset.manualOverride;
-            }, 1000);
-            ref.set(this.checked); 
+            operatingModes.m = 'manual';
+            updateModeUI('m');
+            ref.set(this.checked);
         };
+
+        // When user clicks the mode button
+        modeToggleBtn.onclick = function() {
+            operatingModes.m = operatingModes.m === 'auto' ? 'manual' : 'auto';
+            updateModeUI('m');
+            evaluateControlLogic(); // Re-evaluate immediately
+        }
     }
 
     function createSensorCard(group, db) {
@@ -403,7 +441,7 @@
                 <div class="setpoint-label">Target Moisture Level</div>
                 <div class="setpoint-value" id="${group.id}-value">${setPointValues[group.id].toFixed(1)}%</div>
                 <div class="setpoint-controls">
-                    <button class="setpoint-btn decrease" onclick="updateSetpoint('${group.id}', -1)">−</button>
+                    <button class="setpoint-btn decrease" onclick="updateSetpoint('${group.id}', -1)">-</button>
                     <input type="range" min="0" max="100" value="${setPointValues[group.id]}" class="setpoint-slider" id="${group.id}-slider">
                     <button class="setpoint-btn increase" onclick="updateSetpoint('${group.id}', 1)">+</button>
                 </div>
@@ -424,20 +462,39 @@
         return card;
     }
 
-    function createRelayLogicCard(relayId, title, description, customClass = '') {
+    function createRelayLogicCard(relayId, title) {
         const card = document.createElement("div");
-        card.className = `card text-center ${customClass}`;
-        card.innerHTML = `<h4 class="font-semibold mb-0.5 text-center text-gray-700 text-sm-compact">${title}</h4><p class="text-tiny text-gray-500 mb-1">${description}</p><div class="mt-auto"><div class="text-tiny font-semibold px-1.5 py-0.5 rounded-md inline-block" id="${relayId}-status">OFF</div><div class="text-micro mt-0.5 text-gray-500" id="${relayId}-reason">Initializing...</div></div>`;
+        card.className = `card text-center`;
+        card.innerHTML = `<h4 class="font-semibold mb-0.5 text-center text-gray-700 text-sm-compact">${title}</h4><div class="mt-auto"><p class="mb-1 text-tiny">Logic Status:</p><div class="text-tiny font-semibold px-1.5 py-0.5 rounded-md inline-block" id="${relayId}-status">OFF</div><div class="text-micro mt-0.5 text-gray-500" id="${relayId}-reason">Initializing...</div></div>`;
         return card;
     }
 
-    function createManualOverrideCard(actuator, db, title, customClass = '') {
+    function createManualOverrideCard(group, db, title) {
+        const actuator = group.actuator;
         const card = document.createElement("div");
-        card.className = `card text-center ${customClass}`;
-        card.innerHTML = `<h4 class="font-semibold mb-0.5 text-center text-gray-700 text-sm-compact">${title}</h4><p class="text-tiny text-gray-500 mb-1">${actuator.name}</p><div class="mt-auto"><p class="mb-1 text-tiny">Status: <span id="${actuator.id}-status" class="font-bold">Loading...</span></p><label class="switch mx-auto"><input type="checkbox" id="${actuator.id}-control"><span class="slider"></span></label></div>`;
+        card.className = `card text-center`;
+        // UPDATED: Added mode status and toggle button
+        card.innerHTML = `
+            <h4 class="font-semibold mb-0.5 text-center text-gray-700 text-sm-compact">${title}</h4>
+            <p class="text-tiny text-gray-500 mb-1">${actuator.name}</p>
+            <div class="flex items-center justify-center gap-4">
+                <div>
+                    <p class="mb-1 text-tiny">Status: <span id="${actuator.id}-status" class="font-bold">Loading...</span></p>
+                    <label class="switch mx-auto">
+                        <input type="checkbox" id="${actuator.id}-control">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div>
+                    <p class="mb-1 text-tiny">Mode: <b id="${actuator.id}-mode-status" class="font-bold text-gray-800">Auto</b></p>
+                    <button id="${actuator.id}-mode-toggle" class="mode-toggle-btn">Set Manual</button>
+                </div>
+            </div>
+        `;
         
         const control = card.querySelector(`#${actuator.id}-control`);
         const statusEl = card.querySelector(`#${actuator.id}-status`);
+        const modeToggleBtn = card.querySelector(`#${actuator.id}-mode-toggle`);
         const ref = db.ref(`/actuators/${actuator.id}`);
 
         ref.on("value", snap => {
@@ -451,22 +508,39 @@
             evaluateControlLogic();
         });
         
+        // When user toggles the switch, switch to MANUAL mode
         control.onchange = function() { 
+            operatingModes[group.id] = 'manual';
+            updateModeUI(actuator.id);
             ref.set(this.checked); 
+        };
+
+        // When user clicks the mode button
+        modeToggleBtn.onclick = function() {
+            operatingModes[group.id] = operatingModes[group.id] === 'auto' ? 'manual' : 'auto';
+            updateModeUI(actuator.id);
+            evaluateControlLogic(); // Re-evaluate immediately
         };
         
         return card;
     }
 
-    function setupGlobalControls(db, allActuators) {
-        const mainPump = { id: 'm', name: 'Main Pump', relay: 'relay4' };
-        const allDevices = [...allActuators, mainPump];
-        
-        document.getElementById("allOffBtn").onclick = () => { 
-            allDevices.forEach(actuator => db.ref(`/actuators/${actuator.id}`).set(false)); 
+    function setupGlobalControls(db, allGroups) {
+        document.getElementById("allOffBtn").onclick = () => {
+            allGroups.forEach(group => {
+                // Set mode to manual and then turn off
+                operatingModes[group.id] = 'manual';
+                updateModeUI(group.actuator.id);
+                db.ref(`/actuators/${group.actuator.id}`).set(false);
+            });
         };
-        document.getElementById("allOnBtn").onclick = () => { 
-            allDevices.forEach(actuator => db.ref(`/actuators/${actuator.id}`).set(true)); 
+        document.getElementById("allOnBtn").onclick = () => {
+            allGroups.forEach(group => {
+                // Set mode to manual and then turn on
+                operatingModes[group.id] = 'manual';
+                updateModeUI(group.actuator.id);
+                db.ref(`/actuators/${group.actuator.id}`).set(true);
+            });
         };
     }
 
@@ -497,76 +571,65 @@
         evaluateControlLogic();
     }
     
-   function evaluateControlLogic() {
-    const groups = [
-        { id: 'group1', relay: 'relay1' },
-        { id: 'group2', relay: 'relay2' },
-        { id: 'group3', relay: 'relay3' }
-    ];
-    let anyValveActive = false;
+    function evaluateControlLogic() {
+        const groups = [
+            { id: 'group1', relay: 'relay1', actuatorId: 'v1' },
+            { id: 'group2', relay: 'relay2', actuatorId: 'v2' },
+            { id: 'group3', relay: 'relay3', actuatorId: 'v3' }
+        ];
+        let anyValveActive = false;
+        const db = firebase.database();
 
-    const db = firebase.database();
+        groups.forEach(group => {
+            const avgElement = document.getElementById(`${group.id}-avg`);
+            if (!avgElement) return;
 
-    groups.forEach(group => {
-        const avgElement = document.getElementById(`${group.id}-avg`);
-        if (!avgElement) return;
+            const avgMoisture = parseFloat(avgElement.innerText) || 0;
+            const setPoint = setPointValues[group.id];
+            const needsWater = setPoint > avgMoisture;
+            const isAutoMode = operatingModes[group.id] === 'auto';
+            const actualState = relayStates[group.relay];
 
-        const avgMoisture = parseFloat(avgElement.innerText) || 0;
-        const setPoint = setPointValues[group.id];
-        const needsWater = setPoint > avgMoisture;
-
-        const relayStatus = document.getElementById(`${group.relay}-status`);
-        const relayReason = document.getElementById(`${group.relay}-reason`);
-        const isManualOn = relayStates[group.relay];  // true jika sedang override manual
-
-        const groupControl = document.getElementById(`${group.id.slice(-1) === '1' ? 'v1' : group.id.slice(-1) === '2' ? 'v2' : 'v3'}-control`);
-
-        // === UI Update ===
-        if (relayStatus && relayReason) {
-            if (isManualOn) {
-                relayStatus.textContent = 'ON';
-                relayStatus.className = 'text-tiny font-semibold px-1.5 py-0.5 rounded-md status-active';
-                relayReason.textContent = 'Manual Override';
-            } else if (needsWater) {
-                relayStatus.textContent = 'AUTO ON';
-                relayStatus.className = 'text-tiny font-semibold px-1.5 py-0.5 rounded-md status-active';
-                relayReason.textContent = `Set Point (${setPoint.toFixed(1)}%) > Avg (${avgMoisture.toFixed(1)}%)`;
-            } else {
-                relayStatus.textContent = 'OFF';
-                relayStatus.className = 'text-tiny font-semibold px-1.5 py-0.5 rounded-md status-inactive';
-                relayReason.textContent = `Set Point (${setPoint.toFixed(1)}%) ≤ Avg (${avgMoisture.toFixed(1)}%)`;
+            // === Automatic Control Logic (only runs in Auto mode) ===
+            if (isAutoMode) {
+                const actuatorRef = db.ref(`/actuators/${group.actuatorId}`);
+                if (needsWater && !actualState) {
+                    actuatorRef.set(true);
+                } else if (!needsWater && actualState) {
+                    actuatorRef.set(false);
+                }
             }
-        }
-
-        // === Logic Otomatis HANYA kalau TIDAK manual override ===
-        if (groupControl && !groupControl.dataset.manualOverride) {
-            if (needsWater && !groupControl.checked) {
-                groupControl.checked = true;
-                db.ref(`/actuators/${groupControl.id.replace('-control', '')}`).set(true);
-            } else if (!needsWater && groupControl.checked) {
-                groupControl.checked = false;
-                db.ref(`/actuators/${groupControl.id.replace('-control', '')}`).set(false);
+            
+            // === Update the Relay Logic Card UI ===
+            const relayStatus = document.getElementById(`${group.relay}-status`);
+            const relayReason = document.getElementById(`${group.relay}-reason`);
+            if (relayStatus && relayReason) {
+                relayStatus.textContent = actualState ? 'ON' : 'OFF';
+                relayStatus.className = `text-tiny font-semibold px-1.5 py-0.5 rounded-md ${actualState ? 'status-active' : 'status-inactive'}`;
+                if (isAutoMode) {
+                    relayReason.textContent = `Set (${setPoint.toFixed(1)}%) ${needsWater ? '>' : '='} Avg (${avgMoisture.toFixed(1)}%)`;
+                } else {
+                    relayReason.textContent = 'Manual Mode';
+                }
             }
-        }
+            
+            // Check if any valve is active for pump control
+            if (actualState) {
+                anyValveActive = true;
+            }
+        });
 
-        // Update status pompa jika salah satu valve aktif (otomatis atau manual)
-        if ((isManualOn || (needsWater && (!groupControl?.dataset.manualOverride))) && groupControl?.checked) {
-            anyValveActive = true;
-        }
-    });
-
-    // === Pompa utama menyala kalau ada minimal satu valve aktif ===
-    const mainPumpControl = document.getElementById('m-control');
-    if (mainPumpControl && !mainPumpControl.dataset.manualOverride) {
-        const shouldPumpBeOn = anyValveActive;
-        if (mainPumpControl.checked !== shouldPumpBeOn) {
-            mainPumpControl.checked = shouldPumpBeOn;
-            db.ref('/actuators/m').set(shouldPumpBeOn);
+        // === Main Pump Control Logic ===
+        if (operatingModes.m === 'auto') {
+            const mainPumpControl = document.getElementById('m-control');
+            const pumpRef = db.ref('/actuators/m');
+            if (mainPumpControl && mainPumpControl.checked !== anyValveActive) {
+                pumpRef.set(anyValveActive);
+            }
         }
     }
-}
-
-
 </script>
 </body>
 </html>
+
+```
