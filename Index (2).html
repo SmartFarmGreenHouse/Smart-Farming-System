@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Smart Farming Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-database.js"></script>
+
+    <style>
+        /* --- PERUBAHAN 2: Mengganti URL background dengan gambar yang lebih modern --- */
+        body {
+            background-image: url('https://blog-images.reddoorz.com/uploads/image/file/3600/anggrek-tanah.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-color: #1a202c;
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #dashboard {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Style tambahan untuk vertical bar */
+        .bar-container {
+            position: relative;
+            width: 40px;
+            height: 150px;
+            background: #2d3748;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .bar-fill {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 0%;
+            background: linear-gradient(to top, #22c55e, #3b82f6);
+            transition: height 0.5s ease;
+            border-radius: 10px 10px 0 0;
+        }
+        
+        /* Style untuk switch toggle */
+        .switch { position: relative; display: inline-block; width: 60px; height: 34px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ef4444; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 26px; width: 26px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #22c55e; }
+        input:checked + .slider:before { transform: translateX(26px); }
+    </style>
+</head>
+<body class="text-gray-100 font-sans">
+
+    <div id="loginForm" class="min-h-screen flex items-center justify-center bg-black/70 backdrop-blur-sm w-full">
+        <div class="bg-black/50 backdrop-blur-md p-8 rounded-2xl shadow-lg w-full max-w-sm text-center border border-green-700/50">
+            <img src="https://cdn-icons-png.flaticon.com/512/2900/2900540.png" alt="Smart Farming" class="w-20 mb-4 mx-auto">
+            <h2 class="text-2xl font-bold text-green-400 mb-6">Smart Farming Login</h2>
+            <input type="email" id="email" placeholder="Email" value="admin321@gmail.com" class="w-full bg-gray-700 text-white p-3 rounded-lg mb-4 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500">
+            <input type="password" id="password" placeholder="Password" value="123456789" class="w-full bg-gray-700 text-white p-3 rounded-lg mb-4 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500">
+            <button id="loginBtn" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg transition">Login</button>
+            <p id="loginError" class="text-red-500 mt-4" style="display:none;"></p>
+        </div>
+    </div>
+
+    <div id="dashboard" class="w-full min-h-screen pt-8 pb-12">
+        <main class="max-w-4xl mx-auto p-4 md:p-6 bg-black/60 backdrop-blur-sm rounded-lg shadow-xl border border-green-700/50">
+            
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-bold text-green-300">Dashboard Monitoring</h1>
+                <p class="text-sm text-green-400 font-semibold mt-2">● Connected to Firebase</p>
+            </div>
+
+            <section id="sensor-section" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="bg-gray-800/70 rounded-2xl p-5 shadow-lg hover:shadow-green-600/40 transition border border-gray-700">
+                    <h3 class="text-lg font-semibold text-green-300 mb-4 text-center">🌱 Sensor Group 1</h3>
+                    <div class="flex justify-around items-end h-48">
+                        <div class="flex flex-col items-center">
+                            <div class="bar-container"><div id="s1-bar" class="bar-fill"></div></div>
+                            <p class="mt-2 text-sm">S1: <span id="s1-value" class="font-bold">...</span></p>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="bar-container"><div id="s2-bar" class="bar-fill"></div></div>
+                            <p class="mt-2 text-sm">S2: <span id="s2-value" class="font-bold">...</span></p>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-center space-y-2">
+                        <p>Avg: <span id="group1-avg" class="font-bold text-lg text-green-300">...</span></p>
+                        <p>Condition: <span id="group1-condition" class="px-2 py-1 text-xs rounded-md bg-gray-600">...</span></p>
+                    </div>
+                </div>
+                <div class="bg-gray-800/70 rounded-2xl p-5 shadow-lg hover:shadow-green-600/40 transition border border-gray-700">
+                    <h3 class="text-lg font-semibold text-green-300 mb-4 text-center">🌱 Sensor Group 2</h3>
+                    <div class="flex justify-around items-end h-48">
+                        <div class="flex flex-col items-center">
+                            <div class="bar-container"><div id="s3-bar" class="bar-fill"></div></div>
+                            <p class="mt-2 text-sm">S3: <span id="s3-value" class="font-bold">...</span></p>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="bar-container"><div id="s4-bar" class="bar-fill"></div></div>
+                            <p class="mt-2 text-sm">S4: <span id="s4-value" class="font-bold">...</span></p>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-center space-y-2">
+                        <p>Avg: <span id="group2-avg" class="font-bold text-lg text-green-300">...</span></p>
+                        <p>Condition: <span id="group2-condition" class="px-2 py-1 text-xs rounded-md bg-gray-600">...</span></p>
+                    </div>
+                </div>
+                <div class="bg-gray-800/70 rounded-2xl p-5 shadow-lg hover:shadow-green-600/40 transition border border-gray-700">
+                    <h3 class="text-lg font-semibold text-green-300 mb-4 text-center">🌱 Sensor Group 3</h3>
+                    <div class="flex justify-around items-end h-48">
+                        <div class="flex flex-col items-center">
+                            <div class="bar-container"><div id="s5-bar" class="bar-fill"></div></div>
+                            <p class="mt-2 text-sm">S5: <span id="s5-value" class="font-bold">...</span></p>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="bar-container"><div id="s6-bar" class="bar-fill"></div></div>
+                            <p class="mt-2 text-sm">S6: <span id="s6-value" class="font-bold">...</span></p>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-center space-y-2">
+                        <p>Avg: <span id="group3-avg" class="font-bold text-lg text-green-300">...</span></p>
+                        <p>Condition: <span id="group3-condition" class="px-2 py-1 text-xs rounded-md bg-gray-600">...</span></p>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="setpoint-section" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            </section>
+            
+            <section id="actuator-section" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            </section>
+
+            <section id="global-controls-section" class="bg-gray-800/70 rounded-2xl p-5 shadow-lg border border-gray-700">
+                <h3 class="text-xl font-semibold text-green-300 mb-4 text-center">Global Actuator Controls</h3>
+                <div class="flex flex-col sm:flex-row justify-center items-center gap-4">
+                    <button id="allOnBtn" class="py-2 px-6 rounded-xl bg-green-600 hover:bg-green-500 transition font-semibold w-full sm:w-auto min-w-[120px]">⚡ All ON</button>
+                    <button id="allOffBtn" class="py-2 px-6 rounded-xl bg-orange-600 hover:bg-orange-500 transition font-semibold w-full sm:w-auto min-w-[120px]">🚫 All OFF</button>
+                    <button id="logoutBtn" class="py-2 px-6 rounded-xl bg-red-600 hover:bg-red-500 transition font-semibold w-full sm:w-auto min-w-[120px]">Logout</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // Smart Farming System - Main Program Logic
+        const firebaseConfig = {
+            apiKey: "AIzaSyARnsUK3fcLTOAzjtykzH1Pr4670N_iU4M",
+            authDomain: "smart-farming-system2.firebaseapp.com",
+            databaseURL: "https://smart-farming-system2-default-rtdb.firebaseio.com",
+            projectId: "smart-farming-system2",
+            storageBucket: "smart-farming-system2.firebasestorage.app",
+            messagingSenderId: "17039270358",
+            appId: "1:17039270358:web:9181931f9a46cc03590477"
+        };
+        firebase.initializeApp(firebaseConfig);
+
+        // --- AUTH & DOM REFERENCES ---
+        const allowedEmail = "admin321@gmail.com";
+        const allowedPassword = "123456789";
+        const loginForm = document.getElementById("loginForm");
+        const dashboard = document.getElementById("dashboard");
+        const loginBtn = document.getElementById("loginBtn");
+        let logoutBtn; // Defined later in initDashboard
+
+        // --- GLOBAL STATE ---
+        let sensorData = {};
+        let relayStates = {};
+        let setPointValues = { group1: 30, group2: 30, group3: 30 };
+        let operatingModes = { valve: 'auto', pump: 'auto' };
+        
+        // ============= AUTHENTICATION =============
+        function handleLogin() {
+            const email = document.getElementById("email").value.trim();
+            const password = document.getElementById("password").value;
+            if (email === allowedEmail && password === allowedPassword) {
+                loginForm.style.display = 'none';
+                dashboard.style.display = 'flex'; // Use flex for dashboard
+                document.body.style.display = 'block'; // Reset body display for dashboard content
+                initDashboard();
+            } else {
+                const errorEl = document.getElementById("loginError");
+                errorEl.style.display = 'block';
+                errorEl.textContent = "Invalid email or password";
+            }
+        }
+        loginBtn.addEventListener("click", handleLogin);
+        
+
+        // ============= DASHBOARD INITIALIZATION =============
+        function initDashboard() {
+            const db = firebase.database();
+            setupSensorListeners(db);
+            buildControlCards(db);
+            setupActuatorListeners(db);
+            
+            // Add listeners for the global control buttons
+            document.getElementById('allOnBtn').addEventListener('click', () => setAllActuators(true));
+            document.getElementById('allOffBtn').addEventListener('click', () => setAllActuators(false));
+            
+            logoutBtn = document.getElementById("logoutBtn");
+            logoutBtn.addEventListener("click", () => window.location.reload());
+
+            setInterval(evaluateControlLogic, 2000);
+        }
+
+        // ============= SENSOR MANAGEMENT =============
+        function setupSensorListeners(db) {
+            const groups = [
+                { id: 'group1', sensors: ['s1', 's2'] },
+                { id: 'group2', sensors: ['s3', 's4'] },
+                { id: 'group3', sensors: ['s5', 's6'] }
+            ];
+            groups.forEach(group => {
+                group.sensors.forEach(sensorId => {
+                    db.ref(`/sensors/${sensorId}`).on("value", snap => {
+                        const val = parseFloat(snap.val() || 0);
+                        sensorData[sensorId] = val;
+                        updateSensorDisplay(sensorId, val);
+                        updateGroupAverage(group);
+                    });
+                });
+            });
+        }
+        
+        function updateSensorDisplay(sensorId, value) {
+            document.getElementById(`${sensorId}-value`).innerText = value.toFixed(1) + '%';
+            document.getElementById(`${sensorId}-bar`).style.height = value + '%';
+        }
+
+        function updateGroupAverage(group) {
+            const sensorValues = group.sensors.map(id => sensorData[id] || 0);
+            const avgMoisture = sensorValues.length > 0 ? sensorValues.reduce((a, b) => a + b, 0) / sensorValues.length : 0;
+            document.getElementById(`${group.id}-avg`).innerText = avgMoisture.toFixed(1) + '%';
+            
+            const conditionEl = document.getElementById(`${group.id}-condition`);
+            const needsWater = setPointValues[group.id] > avgMoisture;
+            conditionEl.innerText = needsWater ? 'NEEDS WATER' : 'SUFFICIENT';
+            conditionEl.className = `px-2 py-1 text-xs font-bold rounded-md ${needsWater ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`;
+        }
+        
+        // ============= CONTROL CARDS BUILDER =============
+        function buildControlCards(db) {
+            const setpointContainer = document.getElementById('setpoint-section');
+            const actuatorContainer = document.getElementById('actuator-section');
+            setpointContainer.innerHTML = '';
+            actuatorContainer.innerHTML = '';
+            
+            // Build Set Point Cards
+            ['group1', 'group2', 'group3'].forEach(groupId => {
+                const groupNum = groupId.slice(-1);
+                const card = document.createElement('div');
+                card.className = "bg-gray-800/70 rounded-2xl p-5 shadow-lg text-center border border-gray-700";
+                card.innerHTML = `
+                    <h3 class="text-lg font-semibold text-green-300 mb-2">🎯 Set Point Group ${groupNum}</h3>
+                    <p class="text-4xl font-bold my-4" id="${groupId}-value">${setPointValues[groupId].toFixed(1)}%</p>
+                    <input type="range" min="0" max="100" value="${setPointValues[groupId]}" class="w-full" id="${groupId}-slider">
+                `;
+                setpointContainer.appendChild(card);
+                card.querySelector(`#${groupId}-slider`).oninput = (e) => {
+                    setPointValues[groupId] = parseInt(e.target.value);
+                    updateSetPointDisplay();
+                };
+            });
+            updateSetPointDisplay();
+            
+            // Build Actuator Cards
+            actuatorContainer.innerHTML = `
+                <div class="bg-gray-800/70 rounded-2xl p-5 shadow-lg text-center border border-gray-700">
+                    <h3 class="text-lg font-semibold text-green-300 mb-2">💧 Valve Control</h3>
+                    <div class="flex justify-around items-center mt-4">
+                        <div>
+                            <p class="mb-2">Status: <span id="valve-status" class="font-bold">...</span></p>
+                            <label class="switch"><input type="checkbox" id="valve-control"><span class="slider"></span></label>
+                        </div>
+                        <div>
+                            <p class="mb-2">Mode: <b id="valve-mode-status" class="font-bold">Auto</b></p>
+                            <button id="valve-mode-toggle" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm rounded-lg">Set Manual</button>
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-400 mt-4 h-8" id="valve-logic-reason">Initializing...</div>
+                </div>
+                <div class="bg-gray-800/70 rounded-2xl p-5 shadow-lg text-center border border-gray-700">
+                    <h3 class="text-lg font-semibold text-green-300 mb-2">⚡ Pump Control</h3>
+                    <div class="flex justify-around items-center mt-4">
+                        <div>
+                            <p class="mb-2">Status: <span id="pump-status" class="font-bold">...</span></p>
+                            <label class="switch"><input type="checkbox" id="pump-control"><span class="slider"></span></label>
+                        </div>
+                        <div>
+                            <p class="mb-2">Mode: <b id="pump-mode-status" class="font-bold">Auto</b></p>
+                            <button id="pump-mode-toggle" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm rounded-lg">Set Manual</button>
+                        </div>
+                    </div>
+                       <div class="text-xs text-gray-400 mt-4 h-8" id="pump-logic-reason">Initializing...</div>
+                </div>
+            `;
+            
+            // Add listeners for new controls
+            document.getElementById('valve-control').onchange = function() {
+                operatingModes.valve = 'manual';
+                updateModeUI('valve');
+                db.ref('/actuators/valve').set(this.checked);
+            };
+            document.getElementById('valve-mode-toggle').onclick = () => {
+                operatingModes.valve = operatingModes.valve === 'auto' ? 'manual' : 'auto';
+                updateModeUI('valve');
+            };
+            document.getElementById('pump-control').onchange = function() {
+                operatingModes.pump = 'manual';
+                updateModeUI('pump');
+                db.ref('/actuators/pump').set(this.checked);
+            };
+            document.getElementById('pump-mode-toggle').onclick = () => {
+                operatingModes.pump = operatingModes.pump === 'auto' ? 'manual' : 'auto';
+                updateModeUI('pump');
+            };
+        }
+        
+        function updateSetPointDisplay() {
+            Object.keys(setPointValues).forEach(groupKey => {
+                document.getElementById(`${groupKey}-value`).innerText = setPointValues[groupKey].toFixed(1) + '%';
+                document.getElementById(`${groupKey}-slider`).value = setPointValues[groupKey];
+            });
+        }
+        
+        // ============= ACTUATOR MANAGEMENT & LOGIC =============
+        
+        function setAllActuators(state) { // state is true for ON, false for OFF
+            const db = firebase.database();
+            
+            // Force both components into manual mode to reflect user override
+            operatingModes.valve = 'manual';
+            operatingModes.pump = 'manual';
+            updateModeUI('valve');
+            updateModeUI('pump');
+            
+            // Set the state in Firebase
+            db.ref('/actuators/valve').set(state);
+            db.ref('/actuators/pump').set(state);
+        }
+
+        function setupActuatorListeners(db) {
+            db.ref('/actuators/valve').on("value", snap => {
+                relayStates['valve'] = snap.val();
+                document.getElementById('valve-status').innerText = snap.val() ? "ON" : "OFF";
+                document.getElementById('valve-control').checked = snap.val();
+            });
+            db.ref('/actuators/pump').on("value", snap => {
+                relayStates['pump'] = snap.val();
+                document.getElementById('pump-status').innerText = snap.val() ? "ON" : "OFF";
+                document.getElementById('pump-control').checked = snap.val();
+            });
+        }
+        
+        function updateModeUI(componentId) {
+            const isAuto = operatingModes[componentId] === 'auto';
+            document.getElementById(`${componentId}-mode-status`).textContent = isAuto ? 'Auto' : 'Manual';
+            document.getElementById(`${componentId}-mode-toggle`).textContent = isAuto ? 'Set Manual' : 'Set Auto';
+        }
+
+        function evaluateControlLogic() {
+            const anyGroupNeedsWater = ['group1', 'group2', 'group3'].some(group => {
+                const avgMoisture = parseFloat(document.getElementById(`${group}-avg`)?.innerText) || 0;
+                return setPointValues[group] > avgMoisture;
+            });
+            
+            const db = firebase.database();
+            if (operatingModes.valve === 'auto' && anyGroupNeedsWater !== relayStates['valve']) {
+                db.ref('/actuators/valve').set(anyGroupNeedsWater);
+            }
+            if (operatingModes.pump === 'auto' && anyGroupNeedsWater !== relayStates['pump']) {
+                db.ref('/actuators/pump').set(anyGroupNeedsWater);
+            }
+            updateLogicStatusUI(anyGroupNeedsWater);
+        }
+
+        function updateLogicStatusUI(anyGroupNeedsWater) {
+            const valveReason = document.getElementById('valve-logic-reason');
+            valveReason.textContent = operatingModes.valve === 'auto' ? (anyGroupNeedsWater ? 'Logic: Ada grup yang butuh air.' : 'Logic: Semua grup tercukupi.') : 'Mode Manual Aktif';
+            
+            const pumpReason = document.getElementById('pump-logic-reason');
+            pumpReason.textContent = operatingModes.pump === 'auto' ? (anyGroupNeedsWater ? 'Logic: Ada grup yang butuh air.' : 'Logic: Semua grup tercukupi.') : 'Mode Manual Aktif';
+        }
+    </script>
+</body>
+</html>
